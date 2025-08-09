@@ -167,32 +167,47 @@ namespace TJNK.Farwander.EditorTools
         private static void BuildScene(Tileset tileset, GameObject playerPrefab, GameObject enemyPrefab)
         {
             // Grid + Tilemap
-            var gridGO = new GameObject("Grid");
-            var grid = gridGO.AddComponent<Grid>();
-            grid.cellLayout = GridLayout.CellLayout.Rectangle;
-            grid.cellSize = new Vector3(1, 1, 0);
+            var gridGO = GameObject.Find("Grid");
+            Grid grid;
+            Tilemap tilemap;
 
-            var groundGO = new GameObject("Ground");
-            groundGO.transform.SetParent(gridGO.transform);
-            var tilemap = groundGO.AddComponent<Tilemap>();
-            groundGO.AddComponent<TilemapRenderer>();
+            if (gridGO == null)
+            {
+                gridGO = new GameObject("Grid");
+                grid = gridGO.AddComponent<Grid>();
+                grid.cellLayout = GridLayout.CellLayout.Rectangle;
+                grid.cellSize = new Vector3(1, 1, 0);
+
+                var groundGO = new GameObject("Ground");
+                groundGO.transform.SetParent(gridGO.transform);
+                tilemap = groundGO.AddComponent<Tilemap>();
+                groundGO.AddComponent<TilemapRenderer>();
+            }
+            else
+            {
+                grid = gridGO.GetComponent<Grid>();
+                tilemap = gridGO.transform.Find("Ground")?.GetComponent<Tilemap>();
+            }
 
             // TurnManager
-            var tmGO = new GameObject("TurnManager");
-            tmGO.AddComponent<TurnManager>();
+            if (GameObject.Find("TurnManager") == null)
+                new GameObject("TurnManager").AddComponent<TurnManager>();
 
             // GameBootstrap
-            var gbGO = new GameObject("GameBootstrap");
-            var bootstrap = gbGO.AddComponent<GameBootstrap>();
-            bootstrap.grid = grid;
-            bootstrap.groundTilemap = tilemap;
-            bootstrap.tileset = tileset;
+            var gbGO = GameObject.Find("GameBootstrap");
+            if (gbGO == null)
+            {
+                gbGO = new GameObject("GameBootstrap");
+                var bootstrap = gbGO.AddComponent<GameBootstrap>();
+                bootstrap.grid = grid;
+                bootstrap.groundTilemap = tilemap;
+                bootstrap.tileset = tileset;
 
-            // Assign prefabs to bootstrap via SerializedObject
-            var so = new SerializedObject(bootstrap);
-            so.FindProperty("playerPrefab").objectReferenceValue = playerPrefab.GetComponent<Actor>();
-            so.FindProperty("enemyPrefab").objectReferenceValue = enemyPrefab.GetComponent<Actor>();
-            so.ApplyModifiedPropertiesWithoutUndo();
+                var so = new SerializedObject(bootstrap);
+                so.FindProperty("playerPrefab").objectReferenceValue = playerPrefab.GetComponent<Actor>();
+                so.FindProperty("enemyPrefab").objectReferenceValue = enemyPrefab.GetComponent<Actor>();
+                so.ApplyModifiedPropertiesWithoutUndo();
+            }
 
             // Camera framing
             var cam = Camera.main;
@@ -204,9 +219,6 @@ namespace TJNK.Farwander.EditorTools
             }
             cam.orthographic = true;
             cam.orthographicSize = 10f;
-            cam.transform.position = new Vector3(10, 10, -10);
-
-            Selection.activeObject = gbGO;
         }
     }
 }

@@ -46,11 +46,12 @@ namespace TJNK.Farwander.Systems
             var cam = Camera.main;
             if (cam != null)
             {
-                var pos = p.transform.position;
-                cam.orthographic = true;
-                cam.transform.position = new Vector3(pos.x, pos.y, -10f);
-            }            
-
+                var follow = cam.GetComponent<TJNK.Farwander.Systems.CameraFollow>();
+                if (follow == null) follow = cam.gameObject.AddComponent<TJNK.Farwander.Systems.CameraFollow>();
+                follow.target = p.transform;     // follow the player
+                follow.SnapNow();                // start centered
+            }
+            
             // Spawn enemies
             for (int i = 0; i < enemyCount; i++)
             {
