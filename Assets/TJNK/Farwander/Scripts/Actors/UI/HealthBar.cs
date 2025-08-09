@@ -6,13 +6,10 @@ namespace TJNK.Farwander.Actors.UI
     [ExecuteAlways]
     public class HealthBar : MonoBehaviour
     {
-        [Tooltip("Pixels per unit used by your sprites (just affects size).")]
-        public float pixelsPerUnit = 32f;
-
-        [Tooltip("Bar width in tiles (1 = width of one cell).")]
+        [Tooltip("Bar width in tiles (world units).")]
         public float widthTiles = 0.8f;
 
-        [Tooltip("Bar height in tiles.")]
+        [Tooltip("Bar height in tiles (world units).")]
         public float heightTiles = 0.08f;
 
         [Tooltip("Vertical offset above the actor (in tiles).")]
@@ -30,22 +27,24 @@ namespace TJNK.Farwander.Actors.UI
         private Transform _target;
         private float _w, _h;
 
-        void Awake()
+        void OnEnable()
         {
             _health = GetComponentInParent<TJNK.Farwander.Actors.Health>();
             _target = _health ? _health.transform : transform.parent;
             EnsureSprites();
-            Rebuild();
+            RebuildGeometry();
             if (_health)
             {
                 _health.OnHealthChanged -= OnHealthChanged;
                 _health.OnHealthChanged += OnHealthChanged;
                 _health.OnDeath       -= OnDeath;
                 _health.OnDeath       += OnDeath;
+                // initialize once
+                OnHealthChanged(_health);
             }
         }
 
-        void OnDestroy()
+        void OnDisable()
         {
             if (_health)
             {
@@ -59,24 +58,28 @@ namespace TJNK.Farwander.Actors.UI
             if (!_target) return;
             var basePos = _target.position;
             transform.position = new Vector3(basePos.x, basePos.y + yOffsetTiles, basePos.z);
-            // Keep bar scale stable regardless of parent scaling
-            transform.rotation = Quaternion.identity;
+            transform.rotation = Quaternion.identity; // no tilt
         }
 
         private void OnHealthChanged(TJNK.Farwander.Actors.Health h)
         {
             if (!_fill) return;
             float pct = Mathf.Clamp01(h.maxHp > 0 ? (float)h.hp / h.maxHp : 0f);
+
+            // Adjust fill width via SpriteRenderer.size (requires FullRect sprite + Sliced draw mode)
             _fill.size = new Vector2(_w * pct, _h);
             _fill.transform.localPosition = new Vector3(-_w * 0.5f + (_w * pct) * 0.5f, 0f, 0f);
+
             // Optional color shift when low
             _fill.color = Color.Lerp(new Color(1f, 0.2f, 0.2f, fillColor.a), fillColor, pct);
-            gameObject.SetActive(h.hp < h.maxHp); // hide when full HP
+
+            // Hide bar when full HP to reduce clutter (toggle if you prefer always-on)
+            gameObject.SetActive(h.hp < h.maxHp);
         }
 
         private void OnDeath(TJNK.Farwander.Actors.Health h)
         {
-            // Let the bar disappear with the actor (parent will be destroyed)
+            // Parent GameObject will be destroyed by Health
         }
 
         private void EnsureSprites()
@@ -87,8 +90,8 @@ namespace TJNK.Farwander.Actors.UI
                 bgGO.transform.SetParent(transform, false);
                 _bg = bgGO.AddComponent<SpriteRenderer>();
                 _bg.sortingOrder = 1000;
-                _bg.sprite = MakeUnitSprite();
-                _bg.drawMode = SpriteDrawMode.Sliced;
+                _bg.sprite = MakeUnitFullRectSprite();
+                _bg.drawMode = SpriteDrawMode.Sliced; // requires FullRect
                 _bg.color = bgColor;
             }
             if (!_fill)
@@ -97,30 +100,49 @@ namespace TJNK.Farwander.Actors.UI
                 fillGO.transform.SetParent(transform, false);
                 _fill = fillGO.AddComponent<SpriteRenderer>();
                 _fill.sortingOrder = 1001;
-                _fill.sprite = MakeUnitSprite();
-                _fill.drawMode = SpriteDrawMode.Sliced;
+                _fill.sprite = MakeUnitFullRectSprite();
+                _fill.drawMode = SpriteDrawMode.Sliced; // requires FullRect
                 _fill.color = fillColor;
             }
         }
 
-        private void Rebuild()
+        private void RebuildGeometry()
         {
-            _w = widthTiles;
-            _h = heightTiles;
+            _w = Mathf.Max(0.01f, widthTiles);
+            _h = Mathf.Max(0.01f, heightTiles);
+
             _bg.size = new Vector2(_w, _h);
-            _bg.transform.localPosition = new Vector3(0f, 0f, 0f);
-            if (_health) OnHealthChanged(_health);
+            _bg.transform.localPosition = Vector3.zero;
+
+            // Fill will be sized when OnHealthChanged fires
         }
 
+        // ---- FullRect sprite factory (fixes tiling warning + enables proper resizing) ----
         private static Sprite _unitSprite;
-        private static Sprite MakeUnitSprite()
+        private static Texture2D _unitTex;
+
+        private static Sprite MakeUnitFullRectSprite()
         {
             if (_unitSprite) return _unitSprite;
-            var tex = new Texture2D(2, 2, TextureFormat.RGBA32, false);
-            tex.SetPixels(new Color[] { Color.white, Color.white, Color.white, Color.white });
-            tex.Apply();
-            _unitSprite = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f), 32f);
-            _unitSprite.name = "UnitWhite";
+
+            _unitTex = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+            var white = new[] { Color.white, Color.white, Color.white, Color.white };
+            _unitTex.SetPixels(white);
+            _unitTex.Apply(false, false);
+
+            // Use the Sprite.Create overload that sets meshType = FullRect
+            // Rect = full 2x2, pivot center, PPU = 32 (any value works since we control size via SpriteRenderer.size)
+            _unitSprite = Sprite.Create(
+                _unitTex,
+                new Rect(0, 0, 2, 2),
+                new Vector2(0.5f, 0.5f),
+                32f,
+                0,
+                SpriteMeshType.FullRect,   // <-- critical
+                Vector4.zero,
+                false
+            );
+            _unitSprite.name = "UnitWhite_FullRect";
             return _unitSprite;
         }
     }
