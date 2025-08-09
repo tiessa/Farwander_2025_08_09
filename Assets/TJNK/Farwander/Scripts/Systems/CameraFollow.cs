@@ -5,17 +5,13 @@ namespace TJNK.Farwander.Systems
     [DisallowMultipleComponent]
     public class CameraFollow : MonoBehaviour
     {
-        [Tooltip("What the camera should follow.")]
         public Transform target;
-
-        [Tooltip("Z offset should usually be -10 for 2D.")]
         public Vector3 offset = new Vector3(0, 0, -10);
-
-        [Tooltip("Larger = snappier, smaller = floatier.")]
         public float followLerp = 12f;
-
-        [Tooltip("Snap instantly the first frame after target is set.")]
         public bool snapOnFirstSet = true;
+
+        // NEW: keep following even when Time.timeScale == 0
+        public bool useUnscaledTime = true;
 
         private bool _snappedOnce;
 
@@ -32,11 +28,15 @@ namespace TJNK.Farwander.Systems
                 return;
             }
 
-            // Smoothly move towards the target
-            transform.position = Vector3.Lerp(transform.position, goal, 1f - Mathf.Exp(-followLerp * Time.deltaTime));
+            // use unscaled time when paused
+            float dt = useUnscaledTime ? Time.unscaledDeltaTime : Time.deltaTime;
+            transform.position = Vector3.Lerp(
+                transform.position,
+                goal,
+                1f - Mathf.Exp(-followLerp * Mathf.Max(0f, dt))
+            );
         }
 
-        /// <summary>Call this to instantly snap to the target once.</summary>
         public void SnapNow()
         {
             if (!target) return;

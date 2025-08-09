@@ -34,15 +34,19 @@ namespace TJNK.Farwander.Systems.Visibility
         private void Apply()
         {
             if (_vis == null || _actor == null || !_actor.HasGrid) return;
-            GridPosition p = _actor.Pos;
-            bool show = _vis.IsVisible(p.x, p.y); // hide unless currently visible
+            var p = _actor.Pos;
+            bool show = _vis.IsVisible(p.x, p.y);
 
+            // Toggle all SpriteRenderers under this actor
+            if (_renders == null || _renders.Length == 0)
+                _renders = GetComponentsInChildren<SpriteRenderer>(true);
             for (int i = 0; i < _renders.Length; i++)
                 _renders[i].enabled = show;
 
-            // Hide any world-space UI under this actor (e.g., HealthBar)
-            for (int i = 0; i < transform.childCount; i++)
-                transform.GetChild(i).gameObject.SetActive(show);
+            // Toggle any world-space UI canvases under this actor
+            var canvases = GetComponentsInChildren<UnityEngine.Canvas>(true);
+            for (int i = 0; i < canvases.Length; i++)
+                canvases[i].enabled = show;
         }
     }
 }

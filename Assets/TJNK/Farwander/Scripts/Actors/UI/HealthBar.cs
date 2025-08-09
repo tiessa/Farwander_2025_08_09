@@ -74,7 +74,7 @@ namespace TJNK.Farwander.Actors.UI
             _fill.color = Color.Lerp(new Color(1f, 0.2f, 0.2f, fillColor.a), fillColor, pct);
 
             // Hide bar when full HP to reduce clutter (toggle if you prefer always-on)
-            gameObject.SetActive(h.hp < h.maxHp);
+            // gameObject.SetActive(h.hp < h.maxHp);
         }
 
         private void OnDeath(TJNK.Farwander.Actors.Health h)

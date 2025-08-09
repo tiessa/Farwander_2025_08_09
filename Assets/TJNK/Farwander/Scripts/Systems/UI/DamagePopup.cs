@@ -10,6 +10,8 @@ namespace TJNK.Farwander.Systems.UI
             var go = new GameObject("DamagePopup");
             var canvas = go.AddComponent<Canvas>();
             canvas.renderMode = RenderMode.WorldSpace;
+            canvas.overrideSorting = true;      // <—
+            canvas.sortingOrder = 2000;   
 
             var scaler = go.AddComponent<CanvasScaler>();
             scaler.dynamicPixelsPerUnit = 10;
@@ -18,13 +20,13 @@ namespace TJNK.Farwander.Systems.UI
             textGO.transform.SetParent(go.transform, false);
             var txt = textGO.AddComponent<Text>();
             txt.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            txt.fontSize = 28;
             txt.alignment = TextAnchor.MiddleCenter;
-            txt.fontSize = 24;
             txt.text = amount.ToString();
             txt.color = color ?? new Color(1f, 0.3f, 0.3f, 1f);
 
             var rtCanvas = (RectTransform)canvas.transform;
-            rtCanvas.sizeDelta = new Vector2(1.6f, 0.8f);
+            rtCanvas.sizeDelta = new Vector2(2.2f, 1.1f);
 
             var rtText = (RectTransform)textGO.transform;
             rtText.anchorMin = Vector2.zero; rtText.anchorMax = Vector2.one;

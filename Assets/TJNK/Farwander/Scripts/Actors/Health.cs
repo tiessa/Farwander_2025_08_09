@@ -30,9 +30,13 @@ namespace TJNK.Farwander.Actors
             // If player: pause game; otherwise destroy enemy
             if (GetComponent<PlayerController>())
             {
+                // Snap the camera once right now (works even if paused)
+                var cam = Camera.main;
+                var follow = cam ? cam.GetComponent<TJNK.Farwander.Systems.CameraFollow>() : null;
+                if (follow) follow.SnapNow();
+
                 Debug.Log("GAME OVER");
                 Time.timeScale = 0f;
-                // You can later show a UI overlay here
                 enabled = false;
             }
             else
@@ -43,5 +47,17 @@ namespace TJNK.Farwander.Actors
                 Destroy(gameObject);
             }
         }
+        
+        void Start()
+        {
+            OnHealthChanged?.Invoke(this); // initialize UI on spawn
+        }
+
+        public void Heal(int amount)
+        {
+            if (IsDead) return;
+            hp = Mathf.Min(maxHp, hp + Mathf.Max(1, amount));
+            OnHealthChanged?.Invoke(this);
+        }        
     }
 }

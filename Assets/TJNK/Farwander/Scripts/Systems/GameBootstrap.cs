@@ -48,18 +48,14 @@ namespace TJNK.Farwander.Systems
             var p = Instantiate(playerPrefab);
             if (!p.GetComponent<TJNK.Farwander.Actors.Health>())
                 p.gameObject.AddComponent<TJNK.Farwander.Actors.Health>();
-            p.grid = grid;
-            var playerStart = runtime.Generator.GetRandomFloor();
-            p.Place(playerStart);
-
-            if (!p.GetComponent<TJNK.Farwander.Actors.Health>())
-                p.gameObject.AddComponent<TJNK.Farwander.Actors.Health>();
             if (!p.GetComponentInChildren<HealthBar>())
             {
                 var hb = new GameObject("HealthBar").AddComponent<HealthBar>();
                 hb.transform.SetParent(p.transform, false);
-            }
-            
+            }            p.grid = grid;
+            var playerStart = runtime.Generator.GetRandomFloor();
+            p.Place(playerStart);
+
             var pc = p.GetComponent<PlayerController>();
             pc.Runtime = runtime;
 
@@ -92,17 +88,14 @@ namespace TJNK.Farwander.Systems
                 var e = Instantiate(enemyPrefab);
                 if (!e.GetComponent<TJNK.Farwander.Actors.Health>())
                     e.gameObject.AddComponent<TJNK.Farwander.Actors.Health>();
-                e.grid = grid;
-                e.Place(runtime.Generator.GetRandomFloor());
-                
-                if (!e.GetComponent<TJNK.Farwander.Actors.Health>())
-                    e.gameObject.AddComponent<TJNK.Farwander.Actors.Health>();
                 if (!e.GetComponentInChildren<HealthBar>())
                 {
                     var hb = new GameObject("HealthBar").AddComponent<HealthBar>();
                     hb.transform.SetParent(e.transform, false);
                 }                
-
+                e.grid = grid;
+                e.Place(runtime.Generator.GetRandomFloor());
+                
                 var ec = e.GetComponent<EnemyController>();
                 ec.Runtime = runtime;
                 ec.Player = p;
