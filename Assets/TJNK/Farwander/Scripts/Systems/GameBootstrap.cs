@@ -1,0 +1,67 @@
+﻿using UnityEngine;
+using UnityEngine.Tilemaps;
+using TJNK.Farwander.Content;
+using TJNK.Farwander.Core;
+using TJNK.Farwander.Generation;
+using TJNK.Farwander.Actors;
+
+namespace TJNK.Farwander.Systems
+{
+    public class GameBootstrap : MonoBehaviour
+    {
+        [Header("Scene References")]
+        public Grid grid;                // Assign your Grid
+        public Tilemap groundTilemap;    // Assign the Ground Tilemap
+
+        [Header("Content")]
+        public Tileset tileset;          // Assign the Tileset SO
+
+        [Header("Map Settings")]
+        public int width = 64;
+        public int height = 48;
+        public int seed = 0;
+
+        [Header("Prefabs")]
+        public Actor playerPrefab;       // Prefab with Actor + PlayerController
+        public Actor enemyPrefab;        // Prefab with Actor + EnemyController
+        public int enemyCount = 6;
+
+        private MapRuntime runtime;
+
+        void Start()
+        {
+            // Build map
+            runtime = new MapRuntime(groundTilemap, tileset, width, height, seed);
+
+            // Spawn player
+            var p = Instantiate(playerPrefab);
+            p.grid = grid;
+            var playerStart = runtime.Generator.GetRandomFloor();
+            p.Place(playerStart);
+            
+            var pc = p.GetComponent<PlayerController>();
+            pc.Runtime = runtime;
+
+            // Snap camera to player
+            var cam = Camera.main;
+            if (cam != null)
+            {
+                var pos = p.transform.position;
+                cam.orthographic = true;
+                cam.transform.position = new Vector3(pos.x, pos.y, -10f);
+            }            
+
+            // Spawn enemies
+            for (int i = 0; i < enemyCount; i++)
+            {
+                var e = Instantiate(enemyPrefab);
+                e.grid = grid;
+                e.Place(runtime.Generator.GetRandomFloor());
+
+                var ec = e.GetComponent<EnemyController>();
+                ec.Runtime = runtime;
+                ec.Player = p;
+            }
+        }
+    }
+}
