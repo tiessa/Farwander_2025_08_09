@@ -11,6 +11,7 @@ namespace TJNK.Farwander.Actors
         public int hp = 10;
 
         public event Action<Health> OnDeath;
+        public event System.Action<Health> OnHealthChanged;
 
         public bool IsDead => hp <= 0;
 
@@ -18,10 +19,10 @@ namespace TJNK.Farwander.Actors
         {
             if (IsDead) return;
             hp -= Mathf.Max(1, amount);
-            // Optional: Debug.Log($"{name} takes {amount} dmg -> {hp}/{maxHp}");
+            OnHealthChanged?.Invoke(this);          // <-- notify bars
             if (hp <= 0) Die();
         }
-
+        
         private void Die()
         {
             OnDeath?.Invoke(this);

@@ -1,4 +1,6 @@
-﻿using TJNK.Farwander.Actors;
+﻿using UnityEngine;
+using TJNK.Farwander.Actors;
+using TJNK.Farwander.Systems.UI;
 
 namespace TJNK.Farwander.Systems
 {
@@ -11,6 +13,14 @@ namespace TJNK.Farwander.Systems
             if (!hp) return false;
 
             hp.TakeDamage(baseDamage);
+
+            // pop the number at defender’s position
+            DamagePopup.Spawn(defender.transform.position, baseDamage);
+
+            CombatLog.Instance?.Log($"{attacker.name} hits {defender.name} for {baseDamage}.");
+            if (hp.IsDead)
+                CombatLog.Instance?.Log($"{defender.name} dies!");
+
             return true;
         }
     }
