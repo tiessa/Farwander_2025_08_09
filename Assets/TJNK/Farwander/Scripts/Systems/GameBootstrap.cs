@@ -31,15 +31,23 @@ namespace TJNK.Farwander.Systems
 
         void Start()
         {
+            // Ensure ActorIndex exists
+            if (ActorIndex.Instance == null)
+            {
+                new GameObject("ActorIndex").AddComponent<ActorIndex>();
+            }
+
             // Build map
             runtime = new MapRuntime(groundTilemap, tileset, width, height, seed);
 
             // Spawn player
             var p = Instantiate(playerPrefab);
+            if (!p.GetComponent<TJNK.Farwander.Actors.Health>())
+                p.gameObject.AddComponent<TJNK.Farwander.Actors.Health>();
             p.grid = grid;
             var playerStart = runtime.Generator.GetRandomFloor();
             p.Place(playerStart);
-            
+
             var pc = p.GetComponent<PlayerController>();
             pc.Runtime = runtime;
 
@@ -65,6 +73,8 @@ namespace TJNK.Farwander.Systems
             for (int i = 0; i < enemyCount; i++)
             {
                 var e = Instantiate(enemyPrefab);
+                if (!e.GetComponent<TJNK.Farwander.Actors.Health>())
+                    e.gameObject.AddComponent<TJNK.Farwander.Actors.Health>();
                 e.grid = grid;
                 e.Place(runtime.Generator.GetRandomFloor());
 
