@@ -8,12 +8,14 @@ namespace TJNK.Farwander.Actors
     public class PlayerController : Actor
     {
         public MapRuntime Runtime; // Assigned by GameBootstrap
+        public int fovRadius = 8;
+        
         private static readonly GridPosition[] Dirs =
         {
             new GridPosition( 1, 0), new GridPosition(-1, 0),
             new GridPosition( 0, 1), new GridPosition( 0,-1)
         };
-
+        
         void Update()
         {
             if (!HasGrid || Runtime == null) return;                      // <-- guard
@@ -34,6 +36,7 @@ namespace TJNK.Farwander.Actors
             if (Runtime.Generator.IsWalkable(target))
             {
                 Place(target);
+                Runtime.Visibility.Recompute(target, fovRadius, Runtime.Generator.BlocksSight);
             }
             // keep cadence either way
             TurnManager.Instance.EndPlayerTurn();

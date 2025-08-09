@@ -63,6 +63,13 @@ namespace TJNK.Farwander.Generation
             if (p.x < 0 || p.y < 0 || p.x >= Width || p.y >= Height) return false;
             return walkable[p.x, p.y];
         }
+        
+        public bool BlocksSight(GridPosition p)
+        {
+            if (p.x < 0 || p.y < 0 || p.x >= Width || p.y >= Height) return true;
+            // If you later add doors/windows, derive this from TileDef.flags instead.
+            return !walkable[p.x, p.y];
+        }        
 
         public GridPosition GetRandomFloor()
         {

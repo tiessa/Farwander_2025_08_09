@@ -4,6 +4,7 @@ using TJNK.Farwander.Content;
 using TJNK.Farwander.Core;
 using TJNK.Farwander.Generation;
 using TJNK.Farwander.Actors;
+using TJNK.Farwander.Systems.Visibility;
 
 namespace TJNK.Farwander.Systems
 {
@@ -42,6 +43,14 @@ namespace TJNK.Farwander.Systems
             var pc = p.GetComponent<PlayerController>();
             pc.Runtime = runtime;
 
+            // Attach/init TileTinter on the Ground tilemap
+            var tinter = groundTilemap.GetComponent<TileTinter>();
+            if (tinter == null) tinter = groundTilemap.gameObject.AddComponent<TileTinter>();
+            tinter.Init(runtime.Visibility, runtime.Generator.Width, runtime.Generator.Height); 
+            
+            // Initial FOV compute (match player’s starting position)
+            runtime.Visibility.Recompute(playerStart, 8, runtime.Generator.BlocksSight); 
+            
             // Snap camera to player
             var cam = Camera.main;
             if (cam != null)
