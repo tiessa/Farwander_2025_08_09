@@ -39,8 +39,9 @@ namespace TJNK.Farwander.Systems
                 new GameObject("ActorIndex").AddComponent<ActorIndex>();
             }
             
-            EnsureHud();            
-
+            if (TJNK.Farwander.Systems.ItemIndex.Instance == null)
+                new GameObject("ItemIndex").AddComponent<TJNK.Farwander.Systems.ItemIndex>();
+            
             // Build map
             runtime = new MapRuntime(groundTilemap, tileset, width, height, seed);
 
@@ -80,7 +81,20 @@ namespace TJNK.Farwander.Systems
                 if (follow == null) follow = cam.gameObject.AddComponent<TJNK.Farwander.Systems.CameraFollow>();
                 follow.target = p.transform;     // follow the player
                 follow.SnapNow();                // start centered
-            }
+            } 
+            
+            // Ensure Inventory on player
+            var inv = p.GetComponent<TJNK.Farwander.Items.Inventory>();
+            if (!inv) inv = p.gameObject.AddComponent<TJNK.Farwander.Items.Inventory>();
+            
+            // Build HUD & bind Inventory UI
+            var hud = EnsureHud();
+            var invPanel = hud.transform.Find("InventoryPanel");
+            if (invPanel)
+            {
+                var invUI = invPanel.GetComponent<TJNK.Farwander.Systems.UI.InventoryUI>();
+                if (invUI) invUI.Bind(inv);
+            }            
             
             // Spawn enemies
             for (int i = 0; i < enemyCount; i++)
@@ -105,37 +119,33 @@ namespace TJNK.Farwander.Systems
                 ev.Init(runtime.Visibility);                
             }
         }
-        
-        private void EnsureHud()
-        {
-            // Try to find existing HUD
-            var hud = GameObject.Find("HUD");
-            if (hud != null) return;
 
-            // Canvas
+        private GameObject EnsureHud()
+        {
+            // Find or create HUD root
+            var hud = GameObject.Find("HUD");
+            if (hud != null) return hud;
+
             hud = new GameObject("HUD");
             var canvas = hud.AddComponent<Canvas>();
             canvas.renderMode = RenderMode.ScreenSpaceOverlay;
             hud.AddComponent<CanvasScaler>();
             hud.AddComponent<GraphicRaycaster>();
 
-            // Panel background
-            var panelGO = new GameObject("CombatLogPanel");
-            panelGO.transform.SetParent(hud.transform, false);
-            var panelImg = panelGO.AddComponent<Image>();
-            panelImg.color = new Color(0f, 0f, 0f, 0.4f);
+            // ---------- Combat Log Panel (bottom-left) ----------
+            var logPanel = new GameObject("CombatLogPanel");
+            logPanel.transform.SetParent(hud.transform, false);
+            var logBg = logPanel.AddComponent<Image>();
+            logBg.color = new Color(0f, 0f, 0f, 0.4f);
+            var logRt = logPanel.GetComponent<RectTransform>();
+            logRt.anchorMin = new Vector2(0, 0);
+            logRt.anchorMax = new Vector2(0, 0);
+            logRt.pivot = new Vector2(0, 0);
+            logRt.anchoredPosition = new Vector2(8, 8);
+            logRt.sizeDelta = new Vector2(520, 180);
 
-            // Anchor panel bottom-left
-            var r = panelGO.GetComponent<RectTransform>();
-            r.anchorMin = new Vector2(0, 0);
-            r.anchorMax = new Vector2(0, 0);
-            r.pivot     = new Vector2(0, 0);
-            r.anchoredPosition = new Vector2(8, 8);
-            r.sizeDelta = new Vector2(520, 180);
-
-            // Text
             var textGO = new GameObject("CombatLogText");
-            textGO.transform.SetParent(panelGO.transform, false);
+            textGO.transform.SetParent(logPanel.transform, false);
             var text = textGO.AddComponent<Text>();
             text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
             text.alignment = TextAnchor.LowerLeft;
@@ -143,16 +153,92 @@ namespace TJNK.Farwander.Systems
             text.verticalOverflow = VerticalWrapMode.Truncate;
             text.fontSize = 16;
             text.color = Color.white;
+            var textRt = textGO.GetComponent<RectTransform>();
+            textRt.anchorMin = Vector2.zero;
+            textRt.anchorMax = Vector2.one;
+            textRt.offsetMin = new Vector2(8, 8);
+            textRt.offsetMax = new Vector2(-8, -8);
 
-            var tr = textGO.GetComponent<RectTransform>();
-            tr.anchorMin = new Vector2(0, 0);
-            tr.anchorMax = new Vector2(1, 1);
-            tr.offsetMin = new Vector2(8, 8);
-            tr.offsetMax = new Vector2(8, 8);
-
-            // Component
             var log = hud.AddComponent<TJNK.Farwander.Systems.UI.CombatLog>();
             log.logText = text;
-        }        
+
+            // ---------- Inventory Panel (bottom-right) ----------
+            var invPanel = new GameObject("InventoryPanel");
+            invPanel.transform.SetParent(hud.transform, false);
+            var invBg = invPanel.AddComponent<Image>();
+            invBg.color = new Color(0f, 0f, 0f, 0.35f);
+            var invRt = invPanel.GetComponent<RectTransform>();
+            invRt.anchorMin = new Vector2(1, 0);
+            invRt.anchorMax = new Vector2(1, 0);
+            invRt.pivot = new Vector2(1, 0);
+            invRt.anchoredPosition = new Vector2(-8, 8);
+            invRt.sizeDelta = new Vector2(360, 232);
+
+            // Grid container
+            var grid = new GameObject("Grid");
+            grid.transform.SetParent(invPanel.transform, false);
+            var gridRt = grid.AddComponent<RectTransform>();
+            gridRt.anchorMin = new Vector2(0, 0);
+            gridRt.anchorMax = new Vector2(1, 1);
+            gridRt.offsetMin = new Vector2(8, 8);
+            gridRt.offsetMax = new Vector2(-8, -8);
+
+            var gl = grid.AddComponent<GridLayoutGroup>();
+            gl.cellSize = new Vector2(64, 64);
+            gl.spacing = new Vector2(6, 6);
+            gl.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
+            gl.constraintCount = 5;
+
+            // Slot prefab (disabled child)
+            var slotPrefab = new GameObject("SlotPrefab");
+            slotPrefab.transform.SetParent(invPanel.transform, false);
+            slotPrefab.SetActive(false);
+            var slotRt = slotPrefab.AddComponent<RectTransform>();
+            slotRt.sizeDelta = new Vector2(64, 64);
+            var slotBtn = slotPrefab.AddComponent<Button>();
+
+            // Icon
+            var iconGO = new GameObject("Icon");
+            iconGO.transform.SetParent(slotPrefab.transform, false);
+            var icon = iconGO.AddComponent<Image>();
+            var iconRt = iconGO.GetComponent<RectTransform>();
+            iconRt.anchorMin = Vector2.zero;
+            iconRt.anchorMax = Vector2.one;
+            iconRt.offsetMin = Vector2.zero;
+            iconRt.offsetMax = Vector2.zero;
+
+            // Count
+            var countGO = new GameObject("Count");
+            countGO.transform.SetParent(slotPrefab.transform, false);
+            var count = countGO.AddComponent<Text>();
+            count.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            count.alignment = TextAnchor.LowerRight;
+            count.fontSize = 16;
+            count.color = Color.white;
+            var countRt = countGO.GetComponent<RectTransform>();
+            countRt.anchorMin = Vector2.zero;
+            countRt.anchorMax = Vector2.one;
+            countRt.offsetMin = new Vector2(4, 4);
+            countRt.offsetMax = new Vector2(-4, -4);
+
+            // Highlight
+            var hlGO = new GameObject("Highlight");
+            hlGO.transform.SetParent(slotPrefab.transform, false);
+            var hl = hlGO.AddComponent<Image>();
+            hl.color = new Color(1f, 1f, 1f, 0.18f);
+            hl.enabled = false;
+            var hlRt = hlGO.GetComponent<RectTransform>();
+            hlRt.anchorMin = Vector2.zero;
+            hlRt.anchorMax = Vector2.one;
+            hlRt.offsetMin = Vector2.zero;
+            hlRt.offsetMax = Vector2.zero;
+
+            // InventoryUI component on panel; wire references (Bind happens later in Start)
+            var invUI = invPanel.AddComponent<TJNK.Farwander.Systems.UI.InventoryUI>();
+            invUI.gridRoot = grid.transform;
+            invUI.slotPrefab = slotPrefab;
+
+            return hud;
+        }
     }
 }

@@ -103,3 +103,4 @@ MonoBehaviour:
   grid: {fileID: 0}
   Player: {fileID: 0}
   chaseRange: 30
+  meleeDamage: 2

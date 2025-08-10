@@ -51,7 +51,67 @@ namespace TJNK.Farwander.Actors
                 // Recompute FOV if you added Phase 1
                 if (Runtime.Visibility != null)
                     Runtime.Visibility.Recompute(target, fovRadius, Runtime.Generator.BlocksSight);
+            } 
+            
+            
+            // PICKUP (G) on current cell only
+            if (Input.GetKeyDown(KeyCode.G))
+            {
+                var cell = Pos;
+                var piles = TJNK.Farwander.Systems.ItemIndex.Instance?.GetAt(cell);
+                var inv = GetComponent<TJNK.Farwander.Items.Inventory>();
+                if (piles != null && inv != null)
+                {
+                    // pick up all piles on this cell, merging stacks
+                    for (int i = piles.Count - 1; i >= 0; i--)
+                    {
+                        var pile = piles[i];
+                        var inst = pile.TakeAll();
+                        TJNK.Farwander.Systems.ItemIndex.Instance.Unregister(pile);
+                        inv.TryAdd(inst);
+                    }
+                }
             }
+            
+            // DROP selected (X)
+            if (Input.GetKeyDown(KeyCode.X))
+            {
+                var inv = GetComponent<TJNK.Farwander.Items.Inventory>();
+                if (inv != null)
+                {
+                    var take = inv.TakeSelected();
+                    if (take != null)
+                    {
+                        var index = TJNK.Farwander.Systems.ItemIndex.Instance;
+                        var merge = index?.GetMergeable(Pos, take.def);
+                        if (merge != null && take.def.maxStack > 1)
+                        {
+                            int overflow = take.count - (merge.stack.def.maxStack - merge.stack.count);
+                            merge.stack.AddInto(take.count); // returns internal overflow, but we already merged all possible
+                            merge.AddCount(0); // refresh label
+                            if (overflow > 0)
+                            {
+                                // spawn another pile for overflow
+                                var extra = new TJNK.Farwander.Items.ItemInstance(take.def, overflow);
+                                SpawnPile(extra, Pos);
+                            }
+                        }
+                        else
+                        {
+                            SpawnPile(take, Pos);
+                        }
+                    }
+                }
+            }
+
+            void SpawnPile(TJNK.Farwander.Items.ItemInstance inst, TJNK.Farwander.Core.GridPosition cell)
+            {
+                var go = new GameObject($"Pile_{inst.def.displayName}");
+                var pile = go.AddComponent<TJNK.Farwander.World.ItemPile>();
+                pile.Init(inst, grid, Runtime?.Visibility);
+                pile.SetCell(cell);
+                TJNK.Farwander.Systems.ItemIndex.Instance?.Register(pile);
+            }            
 
             tm.EndPlayerTurn();
         }

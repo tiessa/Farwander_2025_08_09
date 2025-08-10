@@ -18,7 +18,9 @@ namespace TJNK.Farwander.EditorTools
         private static readonly string SOs     = Root + "/ScriptableObjects";
         private static readonly string Prefabs = Root + "/Prefabs";
         private static readonly string Scenes  = Root + "/Scenes";
-
+        private static readonly string ItemsSOFolder = SOs + "/Items";
+        private static readonly string ItemIcons = Art + "/Items";
+        
         private const int PPU = 32; // pixels per unit for generated sprites
 
         [MenuItem("TJNK/Farwander/Setup")]
@@ -61,6 +63,30 @@ namespace TJNK.Farwander.EditorTools
                 UnityEditor.SceneManagement.EditorSceneManager.SaveScene(
                     UnityEditor.SceneManagement.EditorSceneManager.GetActiveScene(), scenePath);
             }
+            
+            // 8) Default Item SOs (idempotent)
+            var apple = EnsureItem(ItemsSOFolder + "/Apple.asset", "apple", "Apple",
+                TJNK.Farwander.Items.ItemKind.Consumable, 10, TJNK.Farwander.Items.EquipSlot.None,
+                ItemIcons + "/apple.png", new Color(0.9f, 0.2f, 0.2f));
+
+            var sword = EnsureItem(ItemsSOFolder + "/IronSword.asset", "iron_sword", "Iron Sword",
+                TJNK.Farwander.Items.ItemKind.Weapon, 1, TJNK.Farwander.Items.EquipSlot.MainHand,
+                ItemIcons + "/iron_sword.png", new Color(0.7f, 0.7f, 0.75f));
+
+            var shield = EnsureItem(ItemsSOFolder + "/WoodenShield.asset", "wood_shield", "Wooden Shield",
+                TJNK.Farwander.Items.ItemKind.Armor, 1, TJNK.Farwander.Items.EquipSlot.OffHand,
+                ItemIcons + "/wood_shield.png", new Color(0.55f, 0.4f, 0.2f));
+
+            var potion = EnsureItem(ItemsSOFolder + "/HealthPotion.asset", "heal_potion", "Health Potion",
+                TJNK.Farwander.Items.ItemKind.Consumable, 10, TJNK.Farwander.Items.EquipSlot.None,
+                ItemIcons + "/health_potion.png", new Color(0.9f, 0.1f, 0.9f));
+
+            var wand = EnsureItem(ItemsSOFolder + "/MagicMissileWand.asset", "wand_missile", "Magic Missile Wand",
+                TJNK.Farwander.Items.ItemKind.Wand, 1, TJNK.Farwander.Items.EquipSlot.MainHand,
+                ItemIcons + "/wand_missile.png", new Color(0.4f, 0.6f, 1f));            
+
+            AssetDatabase.SaveAssets();
+            AssetDatabase.Refresh();
 
             EditorUtility.DisplayDialog("Farwander Setup", "Scene and assets created. Press Play to test!", "Nice");
         }
@@ -73,11 +99,69 @@ namespace TJNK.Farwander.EditorTools
             Directory.CreateDirectory(SOs);
             Directory.CreateDirectory(Prefabs);
             Directory.CreateDirectory(Scenes);
+            Directory.CreateDirectory(ItemsSOFolder);
+            Directory.CreateDirectory(ItemIcons);
             AssetDatabase.Refresh();
         }
 
         // --------- Asset Creation Helpers ---------
 
+        private static Texture2D MakeSolidTex(int w, int h, Color c)
+        {
+            var tex = new Texture2D(w, h, TextureFormat.RGBA32, false);
+            var arr = tex.GetPixels32();
+            for (int i = 0; i < arr.Length; i++) arr[i] = c;
+            tex.SetPixels32(arr);
+            tex.Apply(false, false);
+            return tex;
+        }
+
+        private static Sprite CreateIconSprite(string pathPng, Color color)
+        {
+            var tex = MakeSolidTex(32, 32, color);
+            var png = tex.EncodeToPNG();
+            Object.DestroyImmediate(tex);
+            System.IO.File.WriteAllBytes(pathPng, png);
+            AssetDatabase.ImportAsset(pathPng, ImportAssetOptions.ForceUpdate);
+            var imp = (TextureImporter)AssetImporter.GetAtPath(pathPng);
+            imp.textureType = TextureImporterType.Sprite;
+            imp.spriteImportMode = SpriteImportMode.Single;
+            imp.filterMode = FilterMode.Point;
+            imp.textureCompression = TextureImporterCompression.Uncompressed;
+            // imp.spriteMeshType = SpriteMeshType.FullRect;
+            imp.spritePixelsPerUnit = 32;
+            imp.SaveAndReimport();
+            return AssetDatabase.LoadAssetAtPath<Sprite>(pathPng);
+        }
+
+        private static T CreateOrLoadAsset<T>(string assetPath) where T : ScriptableObject
+        {
+            var a = AssetDatabase.LoadAssetAtPath<T>(assetPath);
+            if (a) return a;
+            a = ScriptableObject.CreateInstance<T>();
+            AssetDatabase.CreateAsset(a, assetPath);
+            return a;
+        }
+
+        private static TJNK.Farwander.Items.ItemDef EnsureItem(
+            string soPath, string id, string name, TJNK.Farwander.Items.ItemKind kind,
+            int maxStack, TJNK.Farwander.Items.EquipSlot slot, string iconPath, Color iconColor)
+        {
+            var item = CreateOrLoadAsset<TJNK.Farwander.Items.ItemDef>(soPath);
+            item.id = id;
+            item.displayName = name;
+            item.kind = kind;
+            item.maxStack = Mathf.Max(1, maxStack);
+            item.slot = slot;
+            if (!item.icon)
+            {
+                var spr = CreateIconSprite(iconPath, iconColor);
+                item.icon = spr;
+                EditorUtility.SetDirty(item);
+            }
+            return item;
+        }
+        
         private static Sprite MakeColorSprite(string path, Color32 color, int size = 32)
         {
             path = path.Replace("\\", "/");
