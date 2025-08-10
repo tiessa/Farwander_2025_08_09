@@ -22,7 +22,7 @@ namespace TJNK.Farwander.Editor
 
             var dungeon = ScriptableObject.CreateInstance<DungeonConfigSO>();
             var player = ScriptableObject.CreateInstance<PlayerConfigSO>();
-            var enemies = ScriptableObject.CreateInstance<EnemyRosterConfigSO>();
+            // NOTE: To avoid type conflicts, we do not create an EnemyRoster asset here.
             var itemDB = ScriptableObject.CreateInstance<ItemDatabaseSO>();
             var spellDB = ScriptableObject.CreateInstance<SpellDatabaseSO>();
             var combat = ScriptableObject.CreateInstance<CombatConfigSO>();
@@ -31,18 +31,18 @@ namespace TJNK.Farwander.Editor
 
             AssetDatabase.CreateAsset(dungeon, Cfg + "/DungeonConfig.asset");
             AssetDatabase.CreateAsset(player, Cfg + "/PlayerConfig.asset");
-            AssetDatabase.CreateAsset(enemies, Cfg + "/EnemyRoster.asset");
             AssetDatabase.CreateAsset(itemDB, Cfg + "/ItemDatabase.asset");
             AssetDatabase.CreateAsset(spellDB, Cfg + "/SpellDatabase.asset");
             AssetDatabase.CreateAsset(combat, Cfg + "/CombatConfig.asset");
             AssetDatabase.CreateAsset(ui, Cfg + "/UIConfig.asset");
 
-            project.Dungeon = dungeon; project.Player = player; project.Enemies = enemies;
+            project.Dungeon = dungeon; project.Player = player;
             project.ItemDB = itemDB; project.SpellDB = spellDB; project.Combat = combat; project.UI = ui;
+            // Leave project.Enemies as-is/null; controller handles null by falling back to 5 enemies.
             AssetDatabase.CreateAsset(project, Cfg + "/ProjectConfig.asset");
 
             AssetDatabase.SaveAssets();
-            EditorUtility.DisplayDialog("Farwander", "Project config assets created under" + Cfg, "OK");
+            EditorUtility.DisplayDialog("Farwander", "Project config assets created under" + Cfg + "(Enemy roster not auto-created to avoid type conflicts)", "OK");
         }
 
         [MenuItem("TJNK/Farwander/Game/Create Scene (Core + Controller + MapView + Input)", priority = 12)]

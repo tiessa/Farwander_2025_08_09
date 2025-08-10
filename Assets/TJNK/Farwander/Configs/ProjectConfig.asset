@@ -1,0 +1,21 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 70644e9550c5481e80c099671768e1ae, type: 3}
+  m_Name: ProjectConfig
+  m_EditorClassIdentifier: 
+  Dungeon: {fileID: 11400000, guid: 90f25f2ebe7cae945ac36d087df12fbd, type: 2}
+  Player: {fileID: 11400000, guid: 98f608e97f4cd4c448d8342b0e2d75d0, type: 2}
+  Enemies: {fileID: 11400000, guid: f23a3342f4e834f489dcaa4572ef3932, type: 2}
+  ItemDB: {fileID: 11400000, guid: 30be2249c88935548bfdc52df8aec29c, type: 2}
+  SpellDB: {fileID: 11400000, guid: 5d08c8e6bf4d7a342ad81948e55d2855, type: 2}
+  Combat: {fileID: 11400000, guid: 0534c325822b7d349b71fde73566663d, type: 2}
+  UI: {fileID: 11400000, guid: df5db8ed2dfc73b429c27839801f77ca, type: 2}

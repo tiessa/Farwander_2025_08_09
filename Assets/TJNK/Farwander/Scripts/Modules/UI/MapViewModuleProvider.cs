@@ -5,14 +5,13 @@ using TJNK.Farwander.Modules.Game;
 using TJNK.Farwander.Modules.Generation;
 using TJNK.Farwander.Modules.Game.Runtime.Entities;
 using TJNK.Farwander.Modules.Game.Runtime.State;
+using System.Collections.Generic;
 
 namespace TJNK.Farwander.Modules.UI
 {
     /// <summary>
-    /// Minimal runtime renderer that draws the generated DungeonMap onto Unity Tilemaps
-    /// and shows a Player sprite that follows Move_Resolved events.
-    /// Includes a fallback that queries the current player position after Gen_Complete
-    /// in case the Entity_Spawned event was missed or processed earlier in the same tick.
+    /// Renders dungeon tilemaps, player, and enemy sprites.
+    /// Player/enemy sprites only update on successful Move_Resolved; failed moves snap to authoritative positions.
     /// </summary>
     public sealed class MapViewModuleProvider : ModuleProvider
     {
@@ -22,6 +21,7 @@ namespace TJNK.Farwander.Modules.UI
         private Tilemap _floorTM, _wallTM;
         private Tile _floorTile, _wallTile;
         private GameObject _playerGo;
+        private readonly Dictionary<int, GameObject> _enemyViews = new Dictionary<int, GameObject>();
 
         public override void Bind(GameCore core)
         {
@@ -59,50 +59,74 @@ namespace TJNK.Farwander.Modules.UI
 
         private void OnEntitySpawned(Entity_Spawned e)
         {
-            if (!e.IsPlayer) return;
             EnsureSceneObjects();
             EnsureTiles();
 
-            if (_playerGo == null)
+            if (e.IsPlayer)
             {
-                _playerGo = new GameObject("PlayerView");
-                _playerGo.transform.SetParent(this.transform, false);
-                var sr = _playerGo.AddComponent<SpriteRenderer>();
-                sr.sortingOrder = 10; // above tiles
-                sr.sprite = MakeSolidSprite(new Color32(40, 140, 255, 255)); // blue fallback
-                Debug.Log($"[MapView] PlayerView created (id={e.EntityId})");
+                if (_playerGo == null)
+                {
+                    _playerGo = new GameObject("PlayerView");
+                    _playerGo.transform.SetParent(this.transform, false);
+                    var sr = _playerGo.AddComponent<SpriteRenderer>();
+                    sr.sortingOrder = 10; // above tiles
+                    sr.sprite = MakeSolidSprite(new Color32(40, 140, 255, 255)); // blue
+                    Debug.Log($"[MapView] PlayerView created (id={e.EntityId})");
+                }
+                _playerGo.transform.position = new Vector3(e.Pos.x + 0.5f, e.Pos.y + 0.5f, 0f);
+                FollowCamera(_playerGo.transform.position);
+                return;
             }
-            _playerGo.transform.position = new Vector3(e.Pos.x + 0.5f, e.Pos.y + 0.5f, 0f);
-            FollowCamera(_playerGo.transform.position);
+
+            // Enemy
+            if (!_enemyViews.TryGetValue(e.EntityId, out var go) || go == null)
+            {
+                go = new GameObject($"EnemyView_{e.EntityId}");
+                go.transform.SetParent(this.transform, false);
+                var sr = go.AddComponent<SpriteRenderer>();
+                sr.sortingOrder = 9; // below player
+                sr.sprite = MakeSolidSprite(new Color32(200, 60, 60, 255)); // red
+                _enemyViews[e.EntityId] = go;
+                Debug.Log($"[MapView] EnemyView created (id={e.EntityId}, name={e.SpriteName})");
+            }
+            go.transform.position = new Vector3(e.Pos.x + 0.5f, e.Pos.y + 0.5f, 0f);
         }
 
         private void OnMoveResolved(Move_Resolved e)
         {
-            if (_playerGo == null) return;
-
-            // Only move the visible player, and only on successful moves.
             var ps = _q != null ? _q.Get<IPlayerState>() : null;
-            if (ps != null && e.EntityId != ps.PlayerId) return;
-
-            if (!e.Succeeded)
+            if (ps != null && e.EntityId == ps.PlayerId)
             {
-                // Snap to authoritative location in case the view ever drifted.
-                var locs = _q != null ? _q.Get<IEntityLocations>() : null;
-                if (locs != null && locs.TryGet(e.EntityId, out var pos))
+                if (_playerGo == null) return;
+                if (!e.Succeeded)
                 {
-                    _playerGo.transform.position = new Vector3(pos.x + 0.5f, pos.y + 0.5f, 0f);
+                    var locs = _q.Get<IEntityLocations>();
+                    if (locs.TryGet(e.EntityId, out var pos))
+                        _playerGo.transform.position = new Vector3(pos.x + 0.5f, pos.y + 0.5f, 0f);
+                    return;
                 }
+                _playerGo.transform.position = new Vector3(e.To.x + 0.5f, e.To.y + 0.5f, 0f);
+                FollowCamera(_playerGo.transform.position);
                 return;
             }
 
-            _playerGo.transform.position = new Vector3(e.To.x + 0.5f, e.To.y + 0.5f, 0f);
-            FollowCamera(_playerGo.transform.position);
+            if (_enemyViews.TryGetValue(e.EntityId, out var go) && go != null)
+            {
+                if (!e.Succeeded)
+                {
+                    var locs = _q.Get<IEntityLocations>();
+                    if (locs.TryGet(e.EntityId, out var pos))
+                        go.transform.position = new Vector3(pos.x + 0.5f, pos.y + 0.5f, 0f);
+                    return;
+                }
+                go.transform.position = new Vector3(e.To.x + 0.5f, e.To.y + 0.5f, 0f);
+            }
         }
 
         private void TryMaterializeExistingPlayer()
         {
             if (_playerGo != null || _q == null) return;
-            var ps   = _q.Get<IPlayerState>();
+            var ps = _q.Get<IPlayerState>();
             var locs = _q.Get<IEntityLocations>();
             if (ps == null || locs == null) return;
             if (ps.PlayerId == 0) return;
