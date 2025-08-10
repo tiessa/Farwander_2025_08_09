@@ -50,14 +50,37 @@ namespace TJNK.Farwander.Core
 
         public void AdvanceTo(ulong targetTick)
         {
-            if (_paused) return; if (targetTick < Now) targetTick = Now;
+            if (_paused) return;
+            if (targetTick < Now) targetTick = Now;
+
             while (_heap.Count > 0)
             {
-                var top = _heap[0]; if (top.Key.Tick > targetTick) break; int budget = DispatchBudgetPerCycle; top = HeapPop(); if (top.Cancelled) continue; Now = top.Key.Tick;
-                if (top.Lane == EventLane.Dispatch) { budget = ProcessDispatchChain(top, budget); }
-                else { _processingTopLevel = true; SafeInvoke(top); _processingTopLevel = false; budget = ProcessSameTickDispatches(budget); }
+                var top = _heap[0];
+                if (top.Key.Tick > targetTick) break;
+
+                int budget = DispatchBudgetPerCycle;
+                top = HeapPop();
+                if (top.Cancelled) continue;
+
+                Now = top.Key.Tick;
+
+                if (top.Lane == EventLane.Dispatch)
+                {
+                    budget = ProcessDispatchChain(top, budget);
+                }
+                else
+                {
+                    _processingTopLevel = true;
+                    SafeInvoke(top);
+                    _processingTopLevel = false;
+                    budget = ProcessSameTickDispatches(budget);
+                }
             }
+
             _sameTickDispatchCount.Clear();
+
+            // 👇 ensure time moves forward even if no jobs were due
+            Now = targetTick;
         }
 
         private int ProcessDispatchChain(Item first, int budget)

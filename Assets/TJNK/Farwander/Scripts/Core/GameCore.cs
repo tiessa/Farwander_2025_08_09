@@ -19,6 +19,7 @@ namespace TJNK.Farwander.Core
 
         private double _accum; // seconds
         private double _tickDuration; // seconds per tick
+        private ulong _lastLoggedTick = ulong.MaxValue;
 
         private void Awake()
         {
@@ -34,9 +35,21 @@ namespace TJNK.Farwander.Core
             _queries.Register(() => _scheduler);
             _queries.Register(() => _validation);
             _queries.Register(() => _queries); // self
+            
+            BindProviders();
 
             // TODO Save/Load hooks: serialize Now + queue state
         }
+        
+        private void BindProviders()
+        {
+            var providers = GetComponentsInChildren<ModuleProvider>(true);
+            foreach (var p in providers)
+            {
+                try { p.Bind(this); }
+                catch (System.Exception ex) { Debug.LogException(ex); }
+            }
+        }        
 
         private void Update()
         {
@@ -57,10 +70,12 @@ namespace TJNK.Farwander.Core
                 var target = _scheduler.Now + ticksToAdvance;
                 _scheduler.AdvanceTo(target);
             }
-
-            if (((int)(_scheduler.Now % 30)) == 0) // light debug cadence
+            
+            if (Scheduler.Now != _lastLoggedTick)
             {
-                Debug.Log("[GameCore] Now=" + _scheduler.Now);
+                _lastLoggedTick = Scheduler.Now;
+                if ((_lastLoggedTick % 30UL) == 0UL)
+                    Debug.Log($"[GameCore] Now={_lastLoggedTick}");
             }
         }
 
