@@ -1,7 +1,4 @@
-﻿using System;
-using System.Collections;
-using System.Reflection;
-using UnityEngine;
+﻿using UnityEngine;
 using TJNK.Farwander.Core;
 using TJNK.Farwander.Modules.Generation;
 using TJNK.Farwander.Modules.Generation.Validators;
@@ -9,12 +6,12 @@ using TJNK.Farwander.Modules.Game.Runtime.Entities;
 using TJNK.Farwander.Modules.Game.Runtime.Movement;
 using TJNK.Farwander.Modules.Game.Runtime.State;
 using TJNK.Farwander.Modules.AI;
+using TJNK.Farwander.Modules.Fov;
 
 namespace TJNK.Farwander.Modules.Game
 {
     /// <summary>
-    /// Step 1+2+3 controller: generation, player spawn/move, enemy spawn and wander cadence.
-    /// This version fixes QueryRegistry property name and avoids compile-time dependency on a specific EnemyRoster shape.
+    /// Step 1+2+3+4 controller: generation, player spawn/move, enemy spawn & wander, and FOV service registration.
     /// </summary>
     public sealed class GameControllerModuleProvider : ModuleProvider
     {
@@ -23,7 +20,6 @@ namespace TJNK.Farwander.Modules.Game
 
         public override string ModuleId { get { return "Game"; } }
 
-        private GameCore _core;
         private EventBus _bus; private TimedScheduler _sch; private ValidationPipeline _val; private QueryRegistry _q;
         private IDungeonGenerator _gen;
 
@@ -41,12 +37,13 @@ namespace TJNK.Farwander.Modules.Game
         private IEnemyRegistry _enemies;
         private EnemySpawner _spawner;
         private EnemyWanderBrain _brain;
+        private FovService _fov;
         private int _aiTurnIndex = 0;
 
         public override void Bind(GameCore core)
         {
             base.Bind(core);
-            _core = core; _bus = core.Bus; _sch = core.Scheduler; _val = core.Validation; _q = core.Queries; // fixed: Queries
+            _bus = core.Bus; _sch = core.Scheduler; _val = core.Validation; _q = core.Queries;
 
             // Validators for generation (audit-only)
             _val.Register<DungeonMap>(new RoomsWithinBoundsValidator());
@@ -77,29 +74,38 @@ namespace TJNK.Farwander.Modules.Game
             {
                 var id = _player.PlayerId; if (id == 0) return;
                 _bus.Publish(new Move_Request { EntityId = id, Dir = e.Dir });
-            });
-            _subInputWait = _bus.Subscribe<Input_Wait>(_ =>
-            {
-                // Consume a tick and then trigger AI turn on next tick
-                int turn = ++_aiTurnIndex;
-                _sch.Schedule(_sch.Now + 1, EventPriority.Actor, EventLane.Action, this,
-                    () => _bus.Publish(new AI_TurnStart { TurnIndex = turn }));
-            });
-
-            // After successful player move, schedule AI turn next tick
+            }); 
+            
+            // After successful player move, schedule AI turn AND FOV next tick
             _subMoveResolved = _bus.Subscribe<Move_Resolved>(e =>
             {
                 if (!e.Succeeded || e.EntityId != _player.PlayerId) return;
                 int turn = ++_aiTurnIndex;
                 _sch.Schedule(_sch.Now + 1, EventPriority.Actor, EventLane.Action, this,
                     () => _bus.Publish(new AI_TurnStart { TurnIndex = turn }));
-            });
+                // NEW: FOV recompute
+                var r = (Config != null && Config.Dungeon != null) ? Config.Dungeon.FovRadius : 8;
+                _sch.Schedule(_sch.Now + 1, EventPriority.Actor, EventLane.Action, this,
+                    () => _bus.Publish(new Fov_Recompute { ViewerId = _player.PlayerId, Radius = r }));
+            }); 
+            
+            // On wait, also recompute FOV next tick
+            _subInputWait = _bus.Subscribe<Input_Wait>(_ =>
+            {
+                int turn = ++_aiTurnIndex;
+                _sch.Schedule(_sch.Now + 1, EventPriority.Actor, EventLane.Action, this,
+                    () => _bus.Publish(new AI_TurnStart { TurnIndex = turn }));
+                // NEW: FOV recompute
+                var r = (Config != null && Config.Dungeon != null) ? Config.Dungeon.FovRadius : 8;
+                _sch.Schedule(_sch.Now + 1, EventPriority.Actor, EventLane.Action, this,
+                    () => _bus.Publish(new Fov_Recompute { ViewerId = _player.PlayerId, Radius = r }));
+            });            
 
             // Kick generation at tick 1 (Action)
             var dcfg0 = Config != null ? Config.Dungeon : null;
             var size      = new Vector2Int(dcfg0 != null ? dcfg0.Width    : 48, dcfg0 != null ? dcfg0.Height   : 32);
-            var roomMin   = dcfg0 != null ? dcfg0.RoomMin : new Vector2Int(4, 3);
-            var roomMax   = dcfg0 != null ? dcfg0.RoomMax : new Vector2Int(10, 7);
+            var roomMin   = new Vector2Int(dcfg0 != null ? dcfg0.RoomMin.x : 4, dcfg0 != null ? dcfg0.RoomMin.y : 3);
+            var roomMax   = new Vector2Int(dcfg0 != null ? dcfg0.RoomMax.x : 10, dcfg0 != null ? dcfg0.RoomMax.y : 7);
             var roomCount = dcfg0 != null ? dcfg0.RoomCount : 8;
             var seed      = dcfg0 != null ? dcfg0.Seed : 1337;
 
@@ -127,6 +133,10 @@ namespace TJNK.Farwander.Modules.Game
             var mq = new MapQuery(map);
             _q.Register<IMapQuery>(() => mq);
 
+            // Register FOV service now that map exists
+            _fov = new FovService(_bus, _sch, _q);
+            var fovRef = _fov; _q.Register<IFovQuery>(() => fovRef);
+
             // Spawn player at first spawn (or center fallback)
             var id  = 1;
             var pos = map.SpawnPoints != null && map.SpawnPoints.Count > 0
@@ -138,17 +148,25 @@ namespace TJNK.Farwander.Modules.Game
             _sch.Schedule(_sch.Now, EventPriority.System, EventLane.Dispatch, this,
                 () => _bus.Publish(new Entity_Spawned { EntityId = id, Pos = pos, IsPlayer = true, SpriteName = "player" }));
 
-            // Spawn enemies from config (fallback to 5 if roster unspecified)
-            int count = ComputeEnemyCountFromRoster(Config != null ? (object)Config.Enemies : null);
-            var tint = new System.Func<int, Color32>(i =>
+            // Spawn enemies from roster (aligned): count = sum(Types[i].Count)
+            var roster = Config != null ? Config.Enemies : null;
+            int total = 0;
+            if (roster != null && roster.Types != null)
+            {
+                for (int i = 0; i < roster.Types.Length; i++)
+                {
+                    var t = roster.Types[i]; if (t != null && t.Count > 0) total += t.Count;
+                }
+            }
+            if (total <= 0) total = 5;
+            System.Func<int, Color32> tint = i =>
             {
                 byte r = (byte)(200 - (i*23)%80);
                 byte g = (byte)(60 + (i*13)%60);
                 byte b = (byte)(60 + (i*7)%60);
                 return new Color32(r,g,b,255);
-            });
-            if (count <= 0) count = 5;
-            _spawner.SpawnAll(map, count, tint);
+            };
+            _spawner.SpawnFromRoster(map, roster);
 
             // Recompute FOV next tick
             var dcfg = Config != null ? Config.Dungeon : null; int r = dcfg != null ? dcfg.FovRadius : 8;
@@ -156,52 +174,6 @@ namespace TJNK.Farwander.Modules.Game
                 () => _bus.Publish(new Fov_Recompute { ViewerId = id, Radius = r }));
 
             Debug.Log($"[GameController] Gen_Complete: size={map.Width}x{map.Height}, rooms={map.Rooms.Count}, spawns={map.SpawnPoints.Count}");
-        }
-
-        private static int ComputeEnemyCountFromRoster(object roster)
-        {
-            try
-            {
-                if (roster == null) return 5;
-                // Try property or field named "Spawns" that is IEnumerable; sum each entry's Count (>0)
-                var t = roster.GetType();
-                object listObj = null;
-                var p = t.GetProperty("Spawns", BindingFlags.Public | BindingFlags.Instance);
-                if (p != null) listObj = p.GetValue(roster);
-                if (listObj == null)
-                {
-                    var f = t.GetField("Spawns", BindingFlags.Public | BindingFlags.Instance);
-                    if (f != null) listObj = f.GetValue(roster);
-                }
-                if (listObj is IEnumerable en)
-                {
-                    int total = 0;
-                    foreach (var entry in en)
-                    {
-                        var et = entry.GetType();
-                        int c = 0;
-                        var pc = et.GetProperty("Count", BindingFlags.Public | BindingFlags.Instance);
-                        if (pc != null)
-                        {
-                            var v = pc.GetValue(entry);
-                            if (v != null) c = Convert.ToInt32(v);
-                        }
-                        else
-                        {
-                            var fc = et.GetField("Count", BindingFlags.Public | BindingFlags.Instance);
-                            if (fc != null)
-                            {
-                                var v = fc.GetValue(entry);
-                                if (v != null) c = Convert.ToInt32(v);
-                            }
-                        }
-                        if (c > 0) total += c; // avoid Mathf.Max ambiguity; simple int compare
-                    }
-                    return total > 0 ? total : 5;
-                }
-                return 5;
-            }
-            catch { return 5; }
         }
 
         private void OnDestroy()

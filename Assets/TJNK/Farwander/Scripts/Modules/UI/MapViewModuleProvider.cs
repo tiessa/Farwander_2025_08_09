@@ -5,21 +5,27 @@ using TJNK.Farwander.Modules.Game;
 using TJNK.Farwander.Modules.Generation;
 using TJNK.Farwander.Modules.Game.Runtime.Entities;
 using TJNK.Farwander.Modules.Game.Runtime.State;
+using TJNK.Farwander.Modules.Fov;
 using System.Collections.Generic;
 
 namespace TJNK.Farwander.Modules.UI
 {
     /// <summary>
-    /// Renders dungeon tilemaps, player, and enemy sprites.
-    /// Player/enemy sprites only update on successful Move_Resolved; failed moves snap to authoritative positions.
+    /// Renders dungeon tilemaps, player, enemy sprites, and a fog overlay tilemap.
+    /// - Only moves sprites on successful Move_Resolved.
+    /// - Fog updates on Fov_Updated; enemies outside LOS are hidden.
     /// </summary>
     public sealed class MapViewModuleProvider : ModuleProvider
-    {
+    { 
+        // Add to fields:
+        [SerializeField] bool revealAllEnemies = false;
+        [SerializeField] bool showEnemiesWhenExplored = false;
+        
         public override string ModuleId { get { return "UI.MapView"; } }
 
         private EventBus _bus; private QueryRegistry _q;
-        private Tilemap _floorTM, _wallTM;
-        private Tile _floorTile, _wallTile;
+        private Tilemap _floorTM, _wallTM, _fogTM;
+        private Tile _floorTile, _wallTile, _fogDarkTile, _fogDimTile;
         private GameObject _playerGo;
         private readonly Dictionary<int, GameObject> _enemyViews = new Dictionary<int, GameObject>();
 
@@ -30,6 +36,7 @@ namespace TJNK.Farwander.Modules.UI
             _bus.Subscribe<Gen_Complete>(OnGenComplete);
             _bus.Subscribe<Entity_Spawned>(OnEntitySpawned);
             _bus.Subscribe<Move_Resolved>(OnMoveResolved);
+            _bus.Subscribe<Fov_Updated>(_ => OnFovUpdated());
         }
 
         private void OnGenComplete(Gen_Complete e)
@@ -50,10 +57,16 @@ namespace TJNK.Farwander.Modules.UI
                 else _wallTM.SetTile(p, _wallTile);
             }
 
+            // Fill fog as unexplored until FOV updates
+            _fogTM.ClearAllTiles();
+            for (int x = 0; x < map.Width; x++)
+            for (int y = 0; y < map.Height; y++)
+                _fogTM.SetTile(new Vector3Int(x, y, 0), _fogDarkTile);
+
             FitCameraToMap(map.Width, map.Height);
             Debug.Log($"[MapView] Rendered map {map.Width}x{map.Height}");
 
-            // Fallback: if the player already exists in game state, visualize now
+            // If player already exists in state, visualize now
             TryMaterializeExistingPlayer();
         }
 
@@ -69,7 +82,7 @@ namespace TJNK.Farwander.Modules.UI
                     _playerGo = new GameObject("PlayerView");
                     _playerGo.transform.SetParent(this.transform, false);
                     var sr = _playerGo.AddComponent<SpriteRenderer>();
-                    sr.sortingOrder = 10; // above tiles
+                    sr.sortingOrder = 10; // above tiles & fog
                     sr.sprite = MakeSolidSprite(new Color32(40, 140, 255, 255)); // blue
                     Debug.Log($"[MapView] PlayerView created (id={e.EntityId})");
                 }
@@ -123,6 +136,41 @@ namespace TJNK.Farwander.Modules.UI
             }
         }
 
+        private void OnFovUpdated()
+        {
+            var fov = _q.Get<IFovQuery>(); if (fov == null) return;
+            var mq  = _q.Get<IMapQuery>(); if (mq == null) return;
+
+            for (int x = 0; x < mq.Size.x; x++)
+            for (int y = 0; y < mq.Size.y; y++)
+            {
+                var p = new Vector3Int(x, y, 0);
+                if (!fov.IsExplored(x, y))
+                    _fogTM.SetTile(p, _fogDarkTile);
+                else if (!fov.IsVisible(x, y))
+                    _fogTM.SetTile(p, _fogDimTile);
+                else
+                    _fogTM.SetTile(p, null);
+            }
+
+            // Replace the toggle section in OnFovUpdated():
+            foreach (var kv in _enemyViews)
+            {
+                var go = kv.Value; if (!go) continue;
+
+                var wp = go.transform.position;
+                int cx = Mathf.FloorToInt(wp.x), cy = Mathf.FloorToInt(wp.y);
+
+                if (revealAllEnemies) { if (!go.activeSelf) go.SetActive(true); continue; }
+
+                var fov2 = _q.Get<IFovQuery>();
+                bool vis = fov2.IsVisible(cx, cy);
+                if (!vis && showEnemiesWhenExplored) vis = fov2.IsExplored(cx, cy); // silhouettes
+
+                if (go.activeSelf != vis) go.SetActive(vis);
+            }
+        }
+
         private void TryMaterializeExistingPlayer()
         {
             if (_playerGo != null || _q == null) return;
@@ -145,7 +193,7 @@ namespace TJNK.Farwander.Modules.UI
 
         private void EnsureSceneObjects()
         {
-            if (_floorTM != null && _wallTM != null) return;
+            if (_floorTM != null && _wallTM != null && _fogTM != null) return;
 
             var gridGo = new GameObject("Grid");
             gridGo.transform.SetParent(this.transform, false);
@@ -153,6 +201,7 @@ namespace TJNK.Farwander.Modules.UI
 
             _floorTM = CreateLayer(gridGo.transform, "Floor", 0);
             _wallTM = CreateLayer(gridGo.transform, "Wall", 1);
+            _fogTM  = CreateLayer(gridGo.transform, "Fog", 2);
         }
 
         private static Tilemap CreateLayer(Transform parent, string name, int sortingOrder)
@@ -168,7 +217,9 @@ namespace TJNK.Farwander.Modules.UI
         private void EnsureTiles()
         {
             if (_floorTile == null) _floorTile = MakeSolidTile(new Color32(180, 180, 180, 255));
-            if (_wallTile == null) _wallTile = MakeSolidTile(new Color32(90, 90, 90, 255));
+            if (_wallTile == null)  _wallTile  = MakeSolidTile(new Color32(90,  90,  90,  255));
+            if (_fogDarkTile == null) _fogDarkTile = MakeSolidTile(new Color32(10, 10, 10, 240));
+            if (_fogDimTile == null)  _fogDimTile  = MakeSolidTile(new Color32(10, 10, 10, 160));
         }
 
         private static Tile MakeSolidTile(Color color)
