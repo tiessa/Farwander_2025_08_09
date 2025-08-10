@@ -3,27 +3,33 @@ using UnityEngine.Tilemaps;
 using TJNK.Farwander.Core;
 using TJNK.Farwander.Modules.Game;
 using TJNK.Farwander.Modules.Generation;
+using TJNK.Farwander.Modules.Game.Runtime.Entities;
+using TJNK.Farwander.Modules.Game.Runtime.State;
 
 namespace TJNK.Farwander.Modules.UI
 {
     /// <summary>
-    /// Minimal runtime renderer that draws the generated DungeonMap onto Unity Tilemaps.
-    /// Pure view module: subscribes to Gen_Complete and builds a Grid + two Tilemaps (Floor/Wall).
-    /// Requires no configs; uses solid-color tiles if no atlas wiring exists yet.
+    /// Minimal runtime renderer that draws the generated DungeonMap onto Unity Tilemaps
+    /// and shows a Player sprite that follows Move_Resolved events.
+    /// Includes a fallback that queries the current player position after Gen_Complete
+    /// in case the Entity_Spawned event was missed or processed earlier in the same tick.
     /// </summary>
     public sealed class MapViewModuleProvider : ModuleProvider
     {
         public override string ModuleId { get { return "UI.MapView"; } }
 
-        private EventBus _bus;
+        private EventBus _bus; private QueryRegistry _q;
         private Tilemap _floorTM, _wallTM;
         private Tile _floorTile, _wallTile;
+        private GameObject _playerGo;
 
         public override void Bind(GameCore core)
         {
             base.Bind(core);
-            _bus = core.Bus;
+            _bus = core.Bus; _q = core.Queries;
             _bus.Subscribe<Gen_Complete>(OnGenComplete);
+            _bus.Subscribe<Entity_Spawned>(OnEntitySpawned);
+            _bus.Subscribe<Move_Resolved>(OnMoveResolved);
         }
 
         private void OnGenComplete(Gen_Complete e)
@@ -46,6 +52,71 @@ namespace TJNK.Farwander.Modules.UI
 
             FitCameraToMap(map.Width, map.Height);
             Debug.Log($"[MapView] Rendered map {map.Width}x{map.Height}");
+
+            // Fallback: if the player already exists in game state, visualize now
+            TryMaterializeExistingPlayer();
+        }
+
+        private void OnEntitySpawned(Entity_Spawned e)
+        {
+            if (!e.IsPlayer) return;
+            EnsureSceneObjects();
+            EnsureTiles();
+
+            if (_playerGo == null)
+            {
+                _playerGo = new GameObject("PlayerView");
+                _playerGo.transform.SetParent(this.transform, false);
+                var sr = _playerGo.AddComponent<SpriteRenderer>();
+                sr.sortingOrder = 10; // above tiles
+                sr.sprite = MakeSolidSprite(new Color32(40, 140, 255, 255)); // blue fallback
+                Debug.Log($"[MapView] PlayerView created (id={e.EntityId})");
+            }
+            _playerGo.transform.position = new Vector3(e.Pos.x + 0.5f, e.Pos.y + 0.5f, 0f);
+            FollowCamera(_playerGo.transform.position);
+        }
+
+        private void OnMoveResolved(Move_Resolved e)
+        {
+            if (_playerGo == null) return;
+
+            // Only move the visible player, and only on successful moves.
+            var ps = _q != null ? _q.Get<IPlayerState>() : null;
+            if (ps != null && e.EntityId != ps.PlayerId) return;
+
+            if (!e.Succeeded)
+            {
+                // Snap to authoritative location in case the view ever drifted.
+                var locs = _q != null ? _q.Get<IEntityLocations>() : null;
+                if (locs != null && locs.TryGet(e.EntityId, out var pos))
+                {
+                    _playerGo.transform.position = new Vector3(pos.x + 0.5f, pos.y + 0.5f, 0f);
+                }
+                return;
+            }
+
+            _playerGo.transform.position = new Vector3(e.To.x + 0.5f, e.To.y + 0.5f, 0f);
+            FollowCamera(_playerGo.transform.position);
+        }
+
+        private void TryMaterializeExistingPlayer()
+        {
+            if (_playerGo != null || _q == null) return;
+            var ps   = _q.Get<IPlayerState>();
+            var locs = _q.Get<IEntityLocations>();
+            if (ps == null || locs == null) return;
+            if (ps.PlayerId == 0) return;
+            if (!locs.TryGet(ps.PlayerId, out var pos)) return;
+
+            _playerGo = new GameObject("PlayerView");
+            _playerGo.transform.SetParent(this.transform, false);
+            var sr = _playerGo.AddComponent<SpriteRenderer>();
+            sr.sortingOrder = 10;
+            sr.sprite = MakeSolidSprite(new Color32(40, 140, 255, 255));
+            Debug.Log($"[MapView] PlayerView materialized from state (id={ps.PlayerId})");
+
+            _playerGo.transform.position = new Vector3(pos.x + 0.5f, pos.y + 0.5f, 0f);
+            FollowCamera(_playerGo.transform.position);
         }
 
         private void EnsureSceneObjects()
@@ -87,6 +158,16 @@ namespace TJNK.Farwander.Modules.UI
             var tile = ScriptableObject.CreateInstance<Tile>(); tile.sprite = sprite; return tile;
         }
 
+        private static Sprite MakeSolidSprite(Color color)
+        {
+            var size = 32; var ppu = 32;
+            var tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
+            var c32 = (Color32)color; var pixels = new Color32[size * size];
+            for (int i = 0; i < pixels.Length; i++) pixels[i] = c32;
+            tex.SetPixels32(pixels); tex.filterMode = FilterMode.Point; tex.wrapMode = TextureWrapMode.Clamp; tex.Apply();
+            return Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), ppu);
+        }
+
         private static void FitCameraToMap(int width, int height)
         {
             var cam = Camera.main;
@@ -98,11 +179,16 @@ namespace TJNK.Farwander.Modules.UI
             }
             cam.orthographic = true;
             cam.transform.position = new Vector3(width / 2f, height / 2f, -10f);
-            // Size so that the entire map fits vertically; adjust for aspect horizontally
             var halfH = height / 2f + 1f;
             var halfW = width / 2f + 1f;
             var neededSizeByWidth = halfW / Mathf.Max(0.0001f, cam.aspect);
             cam.orthographicSize = Mathf.Max(halfH, neededSizeByWidth);
+        }
+
+        private static void FollowCamera(Vector3 worldPos)
+        {
+            var cam = Camera.main; if (cam == null) return;
+            cam.transform.position = new Vector3(worldPos.x, worldPos.y, cam.transform.position.z);
         }
     }
 }

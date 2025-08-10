@@ -7,8 +7,12 @@
     // Input & Movement
     public enum Direction8 { Left, Right, Up, Down, UpLeft, UpRight, DownLeft, DownRight }
     public struct Input_Move { public Direction8 Dir; }
+    public struct Input_Wait { }
     public struct Move_Request { public int EntityId; public Direction8 Dir; }
     public struct Move_Resolved { public int EntityId; public UnityEngine.Vector2Int From; public UnityEngine.Vector2Int To; public bool Succeeded; }
+
+    // Spawning / Entities (for views)
+    public struct Entity_Spawned { public int EntityId; public UnityEngine.Vector2Int Pos; public bool IsPlayer; public string SpriteName; }
 
     // AI
     public struct AI_Tick { }
@@ -16,7 +20,7 @@
 
     // FOV
     public struct Fov_Recompute { public int ViewerId; public int Radius; }
-    public struct Fov_Updated { /* visible/explored sets will be provided by a query; keep event lightweight */ }
+    public struct Fov_Updated { }
 
     // Items/Inventory
     public struct Item_Spawned { public int ItemId; public UnityEngine.Vector2Int Pos; }
@@ -32,7 +36,7 @@
 
     // Character view
     public struct CharView_Request { public int EntityId; }
-    public struct CharView_DataReady { /* DTO provided via query */ }
+    public struct CharView_DataReady { }
 
     // Combat
     public struct Combat_MeleeRequest { public int Attacker; public int Defender; }

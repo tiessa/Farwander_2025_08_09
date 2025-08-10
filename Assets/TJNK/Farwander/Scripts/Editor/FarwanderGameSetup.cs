@@ -6,6 +6,7 @@ using UnityEngine;
 using TJNK.Farwander.Core;
 using TJNK.Farwander.Modules.Game;
 using TJNK.Farwander.Modules.UI;
+using TJNK.Farwander.Modules.Input;
 
 namespace TJNK.Farwander.Editor
 {
@@ -41,17 +42,17 @@ namespace TJNK.Farwander.Editor
             AssetDatabase.CreateAsset(project, Cfg + "/ProjectConfig.asset");
 
             AssetDatabase.SaveAssets();
-            EditorUtility.DisplayDialog("Farwander", "Project config assets created under\n" + Cfg, "OK");
+            EditorUtility.DisplayDialog("Farwander", "Project config assets created under" + Cfg, "OK");
         }
 
-        [MenuItem("TJNK/Farwander/Game/Create Scene With GameCore + GameController + MapView", priority = 11)]
-        public static void CreateSceneWithControllerAndMapView()
+        [MenuItem("TJNK/Farwander/Game/Create Scene (Core + Controller + MapView + Input)", priority = 12)]
+        public static void CreateSceneAll()
         {
             var project = AssetDatabase.LoadAssetAtPath<ProjectConfigSO>(Cfg + "/ProjectConfig.asset");
             if (project == null)
             {
                 if (EditorUtility.DisplayDialog("Farwander", "ProjectConfig.asset not found. Create now?", "Yes", "No"))
-                    CreateProjectConfigs();
+                    TJNK.Farwander.Editor.FarwanderGameSetup.CreateProjectConfigs();
                 project = AssetDatabase.LoadAssetAtPath<ProjectConfigSO>(Cfg + "/ProjectConfig.asset");
                 if (project == null) return;
             }
@@ -69,10 +70,14 @@ namespace TJNK.Farwander.Editor
             viewGo.transform.SetParent(rootGo.transform);
             viewGo.AddComponent<MapViewModuleProvider>();
 
-            var path = Root + "/Scenes/Farwander_WithGameController_And_MapView.unity";
+            var inputGo = new GameObject("InputRouter");
+            inputGo.transform.SetParent(rootGo.transform);
+            inputGo.AddComponent<InputRouterModuleProvider>();
+
+            var path = Root + "/Scenes/Farwander_All.unity";
             Directory.CreateDirectory(Root + "/Scenes");
             EditorSceneManager.SaveScene(scene, path);
-            EditorUtility.DisplayDialog("Farwander", "Scene saved at\n" + path, "OK");
+            EditorUtility.DisplayDialog("Farwander", "Scene saved at" + path, "OK");
         }
     }
 }
